@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding:utf-8 -*-
 # Copyright (c) Megvii, Inc. and its affiliates.
-
 import argparse
 import os
 import random
@@ -28,7 +27,7 @@ def make_parser():
     parser = argparse.ArgumentParser("YOLOX Eval")
     parser.add_argument("-expn", "--experiment-name", type=str, default=None)
     parser.add_argument("-n", "--name", type=str, default=None, help="model name")
-
+    
     # distributed
     parser.add_argument(
         "--dist-backend", default="nccl", type=str, help="distributed backend"
@@ -103,6 +102,7 @@ def make_parser():
         action="store_true",
         help="speed test only.",
     )
+    parser.add_argument("-s", "--switch", action="store_true", help="switch repvgg")
     parser.add_argument(
         "opts",
         help="Modify config options using the command-line",
@@ -167,6 +167,17 @@ def main(exp, args, num_gpu):
         ckpt = torch.load(ckpt_file, map_location=loc)
         model.load_state_dict(ckpt["model"])
         logger.info("loaded checkpoint done.")
+        
+    # model(RepVGG) switch after load weight
+    ''' Model switch to deploy status '''
+    if args.switch:
+        from  yolox.models.network_blocks import RepVGGBlock
+        for layer in model.backbone.backbone.modules():
+            if isinstance(layer, RepVGGBlock):
+                logger.info(f"layer")
+                layer.switch_to_deploy()
+
+        logger.info("Switch model to deploy modality.")
 
     if is_distributed:
         model = DDP(model, device_ids=[rank])

@@ -8,4 +8,6 @@ from .losses import IOUloss
 from .yolo_fpn import YOLOFPN
 from .yolo_head import YOLOXHead
 from .yolo_pafpn import YOLOPAFPN
+from .repvgg_fpn import RepVGGPAFPN
+from .repvgg_bifusion import RepVGGBiFusion
 from .yolox import YOLOX
