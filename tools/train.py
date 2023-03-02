@@ -16,7 +16,7 @@ from yolox.utils import configure_module, configure_nccl, configure_omp, get_num
 
 import os
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "4,5,6,7"
 
 
 def make_parser():
