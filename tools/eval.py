@@ -21,7 +21,7 @@ from yolox.utils import (
     get_model_info,
     setup_logger
 )
-
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 
 def make_parser():
     parser = argparse.ArgumentParser("YOLOX Eval")
@@ -171,9 +171,9 @@ def main(exp, args, num_gpu):
     # model(RepVGG) switch after load weight
     ''' Model switch to deploy status '''
     if args.switch:
-        from  yolox.models.network_blocks import RepVGGBlock
+        from  yolox.models.network_blocks import RepVGGBlock, RepBottleneck
         for layer in model.backbone.backbone.modules():
-            if isinstance(layer, RepVGGBlock):
+            if isinstance(layer, RepVGGBlock) or isinstance(layer, RepBottleneck):
                 logger.info(f"layer")
                 layer.switch_to_deploy()
 
