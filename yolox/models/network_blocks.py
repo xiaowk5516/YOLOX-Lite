@@ -639,53 +639,28 @@ class CAM(nn.Module):
         out = self.channel_attention(x) * x
         return out
 
-class RepBottleneck(nn.Module):
-    # bottleneck for rep
-    def __init__(
-        self,
-        in_channels,
-        out_channels,
-        shortcut=True,
-        expansion=0.5,
-        depthwise=False,
-        act="silu",
-    ):
-        super().__init__()
-        
-        self.bn1 = nn.BatchNorm2d(out_channels)
-        self.bn2 = nn.BatchNorm2d(out_channels)
-        self.act = get_activation(act, inplace=True)
-        
-        # same padding
-        kernel_size = 3
-        pad = (kernel_size - 1) // 2
-        self.conv1 = nn.Conv2d(
-            in_channels,
-            out_channels,
-            kernel_size=kernel_size,
-            stride=1,
-            padding=pad,
-            groups=1,
-            bias=False,
-        )
-        
-        self.conv2 = nn.Conv2d(
-            in_channels,
-            out_channels,
-            kernel_size=kernel_size,
-            stride=1,
-            padding=pad,
-            groups=1,
-            bias=False,
-        )
+class DeCAM(nn.Module):
+    # Decoupe avg and max
+    def __init__(self, c1, ratio=16, act="silu"):  
+        super(DeCAM, self).__init__()
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.max_pool = nn.AdaptiveMaxPool2d(1)
+        self.avg_f1 = nn.Conv2d(c1, c1 // ratio, 1, bias=False)
+        self.avg_act = get_activation(act, inplace=True)
+        self.avg_f2 = nn.Conv2d(c1 // ratio, c1, 1, bias=False)
+
+        self.max_f1 = nn.Conv2d(c1, c1 // ratio, 1, bias=False)
+        self.max_act = get_activation(act, inplace=True)
+        self.max_f2 = nn.Conv2d(c1 // ratio, c1, 1, bias=False)
+        self.sigmoid = nn.Sigmoid()
 
     def forward(self, x):
-        y = self.bn1(self.conv1(x))
-        y = self.bn2(self.conv2(y))
-    
-        y = y + x
-        y = self.act(y)
-        return y
+        avg_out = self.avg_f2(self.avg_act(self.avg_f1(self.avg_pool(x))))
+        max_out = self.max_f2(self.max_act(self.max_f1(self.max_pool(x))))
+        out = self.sigmoid(avg_out + max_out)
+        out = out * x
+        return out
+
 
 
 class RepCSPLayer(nn.Module):
