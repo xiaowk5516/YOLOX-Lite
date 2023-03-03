@@ -12,3 +12,6 @@ from .repvgg_fpn import RepVGGPAFPN
 from .repvgg_bifusion import RepVGGBiFusion
 from .yolox import YOLOX
 from .yolox_lite_neck import RepGSAttFusion, RepBottleSlimFusion
+from .yolo_pafpn_repbottle import YOLOPAFPNRepBottle
+from .repdarknet import RepCSPDarknet
+

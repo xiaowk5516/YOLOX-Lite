@@ -101,6 +101,133 @@ class Bottleneck(nn.Module):
             y = y + x
         return y
 
+class RepBottleneck(nn.Module):
+    # bottleneck for rep
+    def __init__(
+        self,
+        in_channels,
+        out_channels,
+        shortcut=True,
+        expansion=0.5,
+        depthwise=False,
+        act="silu",
+        deploy=False,
+    ):
+        super().__init__()
+        
+        # same padding
+        kernel_size_1x1 = 1
+        pad_1x1 = (kernel_size_1x1 - 1) // 2
+        kernel_size_3x3 = 3
+        pad_3x3 = (kernel_size_3x3 - 1) // 2
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        
+        if deploy:
+            self.rbr_reparam = nn.Conv2d(
+                in_channels=in_channels, 
+                out_channels=out_channels, 
+                kernel_size=kernel_size_3x3, 
+                stride=1,
+                padding=pad_3x3, 
+                bias=True, 
+                padding_mode='zeros')
+        
+        self.conv1x1 = nn.Conv2d(
+            in_channels,
+            out_channels,
+            kernel_size=kernel_size_1x1,
+            stride=1,
+            padding=pad_1x1,
+            groups=1,
+            bias=False,
+        )
+        self.bn1x1 = nn.BatchNorm2d(out_channels)
+        
+        self.conv3x3 = nn.Conv2d(
+            in_channels,
+            out_channels,
+            kernel_size=kernel_size_3x3,
+            stride=1,
+            padding=pad_3x3,
+            groups=1,
+            bias=False,
+        )
+        self.bn3x3 = nn.BatchNorm2d(out_channels)
+        self.act = get_activation(act, inplace=True)
+
+    def forward(self, x):
+        
+        if hasattr(self, 'rbr_reparam'):
+            return self.act(self.rbr_reparam(x))
+        
+        y = self.bn1x1(self.conv1x1(x))
+        y = self.bn3x3(self.conv3x3(y))
+    
+        y = y + x
+        y = self.act(y)
+        return y
+    
+    # def get_equivalent_kernel_bias(self):
+    #     kernel3x3, bias3x3 = self._fuse_bn_tensor(self.conv3x3, self.bn3x3)
+    #     kernel1x1, bias1x1 = self._fuse_bn_tensor(self.conv1x1, self.bn3x3)
+    #     kernelid, biasid = self._fuse_bn_tensor()
+    #     kernel_conv, bias_conv = self._fuse_kernel1x1_kernel3x3(kernel1x1, bias1x1, kernel3x3, bias3x3)
+    #     return kernel_conv + kernelid, bias_conv + biasid
+
+    # def _fuse_kernel1x1_kernel3x3(self, kernel_conv1, bias_conv1, kernel_conv2, bias_conv2):
+    #     kernel_value = torch.zeros((self.out_channels, self.in_channels, 3, 3), dtype=kernel_conv1.dtype, device=kernel_conv1.device)
+    #     bias_value = torch.zeros((self.out_channels,), dtype=bias_conv1.dtype, device=bias_conv1.device)
+    #     for k in range(self.out_channels):
+            
+    #         for j in range(self.in_channels):
+    #             kernel_value[k, j, :, :] = kernel_conv1[k, j, 0, 0] * kernel_conv2[k, j, :, :]
+    #             bias_value[k] += bias_conv1[j] * kernel_conv2[k, j, :, :].sum()
+            
+    #         bias_value[k] += bias_conv2[k]
+                
+    #     return kernel_value, bias_value
+    
+    # def _fuse_bn_tensor(self, conv=None, bn=None):
+    #     if conv is None or bn is None:
+    #         if not hasattr(self, 'id_tensor'):
+    #             # input_dim = self.in_channels // self.groups
+    #             kernel_value = np.zeros((self.out_channels, self.in_channels, 3, 3), dtype=np.float32)
+    #             for i in range(self.in_channels):
+    #                 kernel_value[i, i % self.in_channels, 1, 1] = 1
+    #             self.id_tensor = torch.from_numpy(kernel_value).to(self.conv3x3.weight.device)
+    #         return self.id_tensor, 0
+        
+    #     kernel = conv.weight
+    #     running_mean = bn.running_mean
+    #     running_var = bn.running_var
+    #     gamma = bn.weight
+    #     beta = bn.bias
+    #     eps = bn.eps
+
+    #     std = (running_var + eps).sqrt()
+    #     t = (gamma / std).reshape(-1, 1, 1, 1)
+    #     return kernel * t, beta - running_mean * gamma / std
+
+    # def switch_to_deploy(self):
+    #     # if hasattr(self, 'rbr_reparam'):
+    #     #     return
+    #     kernel, bias = self.get_equivalent_kernel_bias()
+    #     self.rbr_reparam = nn.Conv2d(in_channels=self.conv1x1.in_channels, out_channels=self.conv3x3.out_channels,
+    #                                  kernel_size=self.conv3x3.kernel_size, stride=self.conv3x3.stride,
+    #                                  padding=self.conv3x3.padding, dilation=self.conv3x3.dilation, groups=self.conv3x3.groups, bias=True)
+    #     self.rbr_reparam.weight.data = kernel
+    #     self.rbr_reparam.bias.data = bias
+    #     for para in self.parameters():
+    #         para.detach_()
+    #     self.__delattr__('conv1x1')
+    #     self.__delattr__('conv3x3')
+    #     self.__delattr__('bn1x1')
+    #     self.__delattr__('bn3x3')
+    #     if hasattr(self, 'id_tensor'):
+    #         self.__delattr__('id_tensor')
+    #     self.deploy = True
+
 
 class ResLayer(nn.Module):
     "Residual layer with `in_channels` inputs."
@@ -185,6 +312,46 @@ class CSPLayer(nn.Module):
         x = torch.cat((x_1, x_2), dim=1)
         return self.conv3(x)
 
+
+class RepCSPLayer(nn.Module):
+    """C3 in yolov5, CSP Bottleneck with 3 convolutions"""
+
+    def __init__(
+        self,
+        in_channels,
+        out_channels,
+        n=1,
+        shortcut=True,
+        expansion=0.5,
+        depthwise=False,
+        act="silu",
+    ):
+        """
+        Args:
+            in_channels (int): input channels.
+            out_channels (int): output channels.
+            n (int): number of Bottlenecks. Default value: 1.
+        """
+        # ch_in, ch_out, number, shortcut, groups, expansion
+        super().__init__()
+        hidden_channels = int(out_channels * expansion)  # hidden channels
+        self.conv1 = BaseConv(in_channels, hidden_channels, 1, stride=1, act=act)
+        self.conv2 = BaseConv(in_channels, hidden_channels, 1, stride=1, act=act)
+        self.conv3 = BaseConv(2 * hidden_channels, out_channels, 1, stride=1, act=act)
+        module_list = [
+            RepBottleneck(
+                hidden_channels, hidden_channels, shortcut, 1.0, depthwise, act=act
+            )
+            for _ in range(n)
+        ]
+        self.m = nn.Sequential(*module_list)
+
+    def forward(self, x):
+        x_1 = self.conv1(x)
+        x_2 = self.conv2(x)
+        x_1 = self.m(x_1)
+        x = torch.cat((x_1, x_2), dim=1)
+        return self.conv3(x)
 
 class Focus(nn.Module):
     """Focus width and height information into channel space."""
