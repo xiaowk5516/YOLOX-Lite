@@ -637,6 +637,30 @@ class CAM(nn.Module):
         out = self.channel_attention(x) * x
         return out
 
+class DeCAM(nn.Module):
+    # Decoupe avg and max
+    def __init__(self, c1, ratio=16, act="silu"):  
+        super(DeCAM, self).__init__()
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.max_pool = nn.AdaptiveMaxPool2d(1)
+        self.avg_f1 = nn.Conv2d(c1, c1 // ratio, 1, bias=False)
+        self.avg_act = get_activation(act, inplace=True)
+        self.avg_f2 = nn.Conv2d(c1 // ratio, c1, 1, bias=False)
+
+        self.max_f1 = nn.Conv2d(c1, c1 // ratio, 1, bias=False)
+        self.max_act = get_activation(act, inplace=True)
+        self.max_f2 = nn.Conv2d(c1 // ratio, c1, 1, bias=False)
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, x):
+        avg_out = self.avg_f2(self.avg_act(self.avg_f1(self.avg_pool(x))))
+        max_out = self.max_f2(self.max_act(self.max_f1(self.max_pool(x))))
+        out = self.sigmoid(avg_out + max_out)
+        out = out * x
+        return out
+
+
+
 class RepBottleneck(nn.Module):
     # bottleneck for rep
     def __init__(

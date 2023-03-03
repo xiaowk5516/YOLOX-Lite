@@ -7,7 +7,7 @@ import torch.nn as nn
 
 from .repdarknet import RepCSPDarknet
 from .repvgg import RepVGG
-from .network_blocks import SimConv, CSPLayer, GSConv, Transpose, CAM, RepCSPLayer
+from .network_blocks import SimConv, CSPLayer, GSConv, Transpose, CAM, RepCSPLayer, DeCAM
 
 
 class RepGSAttFusion(nn.Module):
@@ -139,28 +139,28 @@ class RepBottleSlimFusion(nn.Module):
         self.f2_p3 = Conv(self.in_channels[0], self.in_channels[0], 3, 2) # 143
         # Concate(self.in_channels[0], self.in_channels[0], self.in_channels[1])
         self.f2_conv1 = Conv(self.in_channels[1] + self.in_channels[0]*2, self.in_channels[1], 1, 1) # 15
-        self.f2_C3 = RepCSPLayer(self.in_channels[1], self.in_channels[1], round(12 * depth), False, act=act)  # 16
+        self.f2_C3 = RepCSPLayer(self.in_channels[1], self.in_channels[1], round(3 * depth), False, act=act)  # 16
         self.f2_conv2 = Conv(self.in_channels[1], self.in_channels[0], 1, 1) # 17
-        self.f2_att = CAM(self.in_channels[0])
+        self.f2_att = DeCAM(self.in_channels[0], act=act)
         
         # top-down f3
         self.f3_up = Transpose(self.in_channels[0], self.in_channels[0]) 
         # Concate(self.in_channels[0], self.in_channels[1])
         self.f3_conv1 = Conv(self.in_channels[1], self.in_channels[0], 1, 1)
-        self.f3_C3 = RepCSPLayer(self.in_channels[0], self.in_channels[0], round(12 * depth), False, act=act)
+        self.f3_C3 = RepCSPLayer(self.in_channels[0], self.in_channels[0], round(3 * depth), False, act=act)
         
         # bottom-up p2
         self.p2_down = Conv(self.in_channels[0], self.in_channels[0], 3, 2)
-        self.p2_att = CAM(self.in_channels[0])
+        self.p2_att = DeCAM(self.in_channels[0], act=act)
         # Concate(self.in_channels[0], self.in_channels[0], self.in_channels[1])
         self.p2_conv = Conv(self.in_channels[2], self.in_channels[1], 1, 1)
-        self.p2_C3 = RepCSPLayer(self.in_channels[1], self.in_channels[1], round(12 * depth), False, act=act)
+        self.p2_C3 = RepCSPLayer(self.in_channels[1], self.in_channels[1], round(3 * depth), False, act=act)
 
         # bottom-up p1
         self.p1_down = Conv(self.in_channels[1], self.in_channels[1], 3, 2)
-        self.p1_att = CAM(self.in_channels[1])
+        self.p1_att = DeCAM(self.in_channels[1], act=act)
         # Concate(self.in_channels[1], self.in_channels[1])
-        self.p1_C3 = RepCSPLayer(self.in_channels[2], self.in_channels[2], round(12 * depth), False, act=act)
+        self.p1_C3 = RepCSPLayer(self.in_channels[2], self.in_channels[2], round(3 * depth), False, act=act)
         
         
     def forward(self, input):
