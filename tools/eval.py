@@ -22,6 +22,7 @@ from yolox.utils import (
     setup_logger
 )
 
+os.environ["CUDA_VISIBLE_DEVICES"] = "7"
 
 def make_parser():
     parser = argparse.ArgumentParser("YOLOX Eval")

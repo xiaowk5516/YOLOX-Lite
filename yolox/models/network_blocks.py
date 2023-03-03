@@ -412,7 +412,7 @@ class GSConv(nn.Module):
         super().__init__()
         channel_ = out_channels // 2
         self.cv1 = SimConv(in_channels, channel_, kernel_size, stride, groups)
-        self.cv2 = SimConv(channel_, channel_, 5, 1, groups)
+        self.cv2 = SimConv(channel_, channel_, kernel_size, 1, groups)
 
     def forward(self, x):
         x1 = self.cv1(x)
@@ -469,3 +469,92 @@ class CAM(nn.Module):
     def forward(self, x):
         out = self.channel_attention(x) * x
         return out
+
+class RepBottleneck(nn.Module):
+    # bottleneck for rep
+    def __init__(
+        self,
+        in_channels,
+        out_channels,
+        shortcut=True,
+        expansion=0.5,
+        depthwise=False,
+        act="silu",
+    ):
+        super().__init__()
+        
+        self.bn1 = nn.BatchNorm2d(out_channels)
+        self.bn2 = nn.BatchNorm2d(out_channels)
+        self.act = get_activation(act, inplace=True)
+        
+        # same padding
+        kernel_size = 3
+        pad = (kernel_size - 1) // 2
+        self.conv1 = nn.Conv2d(
+            in_channels,
+            out_channels,
+            kernel_size=kernel_size,
+            stride=1,
+            padding=pad,
+            groups=1,
+            bias=False,
+        )
+        
+        self.conv2 = nn.Conv2d(
+            in_channels,
+            out_channels,
+            kernel_size=kernel_size,
+            stride=1,
+            padding=pad,
+            groups=1,
+            bias=False,
+        )
+
+    def forward(self, x):
+        y = self.bn1(self.conv1(x))
+        y = self.bn2(self.conv2(y))
+    
+        y = y + x
+        y = self.act(y)
+        return y
+
+
+class RepCSPLayer(nn.Module):
+    """C3 in yolov5, CSP Bottleneck with 3 convolutions"""
+
+    def __init__(
+        self,
+        in_channels,
+        out_channels,
+        n=1,
+        shortcut=True,
+        expansion=0.5,
+        depthwise=False,
+        act="silu",
+    ):
+        """
+        Args:
+            in_channels (int): input channels.
+            out_channels (int): output channels.
+            n (int): number of Bottlenecks. Default value: 1.
+        """
+        # ch_in, ch_out, number, shortcut, groups, expansion
+        super().__init__()
+        hidden_channels = int(out_channels * expansion)  # hidden channels
+        self.conv1 = BaseConv(in_channels, hidden_channels, 1, stride=1, act=act)
+        self.conv2 = BaseConv(in_channels, hidden_channels, 1, stride=1, act=act)
+        self.conv3 = BaseConv(2 * hidden_channels, out_channels, 1, stride=1, act=act)
+        module_list = [
+            RepBottleneck(
+                hidden_channels, hidden_channels, shortcut, 1.0, depthwise, act=act
+            )
+            for _ in range(n)
+        ]
+        self.m = nn.Sequential(*module_list)
+
+    def forward(self, x):
+        x_1 = self.conv1(x)
+        x_2 = self.conv2(x)
+        x_1 = self.m(x_1)
+        x = torch.cat((x_1, x_2), dim=1)
+        return self.conv3(x)
