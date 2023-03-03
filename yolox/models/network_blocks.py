@@ -210,8 +210,10 @@ class RepBottleneck(nn.Module):
         return kernel * t, beta - running_mean * gamma / std
 
     def switch_to_deploy(self):
-        # if hasattr(self, 'rbr_reparam'):
-        #     return
+        
+        if hasattr(self, 'rbr_reparam'):
+            return
+        
         kernel, bias = self.get_equivalent_kernel_bias()
         self.rbr_reparam = nn.Conv2d(in_channels=self.conv1x1.in_channels, out_channels=self.conv3x3.out_channels,
                                      kernel_size=self.conv3x3.kernel_size, stride=self.conv3x3.stride,
