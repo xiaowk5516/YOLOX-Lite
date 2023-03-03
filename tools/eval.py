@@ -21,12 +21,8 @@ from yolox.utils import (
     get_model_info,
     setup_logger
 )
-<<<<<<< HEAD
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "7"
-=======
 os.environ["CUDA_VISIBLE_DEVICES"] = "2"
->>>>>>> fcc13ddb68d790b1b7a3d73d6a49bae8251d949d
 
 def make_parser():
     parser = argparse.ArgumentParser("YOLOX Eval")
@@ -176,13 +172,17 @@ def main(exp, args, num_gpu):
     # model(RepVGG) switch after load weight
     ''' Model switch to deploy status '''
     if args.switch:
-        from  yolox.models.network_blocks import RepVGGBlock, RepBottleneck
+        from  yolox.models.network_blocks import RepBottleneck
         for layer in model.backbone.backbone.modules():
-            if isinstance(layer, RepVGGBlock) or isinstance(layer, RepBottleneck):
+            if isinstance(layer, RepBottleneck):
                 logger.info(f"layer")
+                logger.info(f"{dir(layer)}")
                 layer.switch_to_deploy()
 
         logger.info("Switch model to deploy modality.")
+        
+    logger.info("Model Summary: {}".format(get_model_info(model, exp.test_size)))
+    logger.info("Model Structure:\n{}".format(str(model)))
 
     if is_distributed:
         model = DDP(model, device_ids=[rank])
