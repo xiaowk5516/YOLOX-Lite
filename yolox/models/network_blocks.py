@@ -159,7 +159,9 @@ class RepBottleneck(nn.Module):
     def forward(self, x):
         
         if hasattr(self, 'rbr_reparam'):
-            return self.act(self.rbr_reparam(x))
+            y = self.rbr_reparam(x)
+            # y = y + x
+            return self.act(y)
         
         y = self.bn1x1(self.conv1x1(x))
         y = self.bn3x3(self.conv3x3(y))
@@ -170,21 +172,25 @@ class RepBottleneck(nn.Module):
     
     def get_equivalent_kernel_bias(self):
         kernel3x3, bias3x3 = self._fuse_bn_tensor(self.conv3x3, self.bn3x3)
-        kernel1x1, bias1x1 = self._fuse_bn_tensor(self.conv1x1, self.bn3x3)
-        kernelid, biasid = self._fuse_bn_tensor()
+        kernel1x1, bias1x1 = self._fuse_bn_tensor(self.conv1x1, self.bn1x1)
         kernel_conv, bias_conv = self._fuse_kernel1x1_kernel3x3(kernel1x1, bias1x1, kernel3x3, bias3x3)
+        kernelid, biasid = self._fuse_bn_tensor()
         return kernel_conv + kernelid, bias_conv + biasid
 
     def _fuse_kernel1x1_kernel3x3(self, kernel_conv1, bias_conv1, kernel_conv2, bias_conv2):
         kernel_value = torch.zeros((self.out_channels, self.in_channels, 3, 3), dtype=kernel_conv1.dtype, device=kernel_conv1.device)
         bias_value = torch.zeros((self.out_channels,), dtype=bias_conv1.dtype, device=bias_conv1.device)
-        for k in range(self.out_channels):
             
-            for j in range(self.in_channels):
-                kernel_value[k, j, :, :] = kernel_conv1[k, j, 0, 0] * kernel_conv2[k, j, :, :]
-                bias_value[k] += bias_conv1[j] * kernel_conv2[k, j, :, :].sum()
+        bias_conv1 = bias_conv1.reshape(1, -1, 1, 1)
+        bias_conv1 = bias_conv1.repeat(self.in_channels, 1, 1, 1)
+        bias_value = (bias_conv1 * kernel_conv2).reshape(self.in_channels, -1).sum(axis=1)
+        bias_value = bias_value + bias_conv2
             
-            bias_value[k] += bias_conv2[k]
+        kernel_conv1 = kernel_conv1.unsqueeze(0)
+        kernel_conv1 = kernel_conv1.repeat(self.in_channels, 1, 1, 1, 1)
+        kernel_conv2 = kernel_conv2.unsqueeze(2)
+        kernel_conv2 = kernel_conv2.repeat(1, 1, self.in_channels, 1, 1)
+        kernel_value = (kernel_conv1 * kernel_conv2).sum(axis=1)
                 
         return kernel_value, bias_value
     
@@ -218,8 +224,8 @@ class RepBottleneck(nn.Module):
         self.rbr_reparam = nn.Conv2d(in_channels=self.conv1x1.in_channels, out_channels=self.conv3x3.out_channels,
                                      kernel_size=self.conv3x3.kernel_size, stride=self.conv3x3.stride,
                                      padding=self.conv3x3.padding, dilation=self.conv3x3.dilation, groups=self.conv3x3.groups, bias=True)
-        self.rbr_reparam.weight.data = kernel
-        self.rbr_reparam.bias.data = bias
+        self.rbr_reparam.weight = nn.Parameter(kernel)# kernel
+        self.rbr_reparam.bias = nn.Parameter(bias)
         for para in self.parameters():
             para.detach_()
         self.__delattr__('conv1x1')
